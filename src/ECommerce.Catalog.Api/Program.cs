@@ -13,8 +13,18 @@ builder.Services.AddDbContext<CatalogDbContext>(options =>
 
 var app = builder.Build();
 
-// Aspire default endpoints (/health, /alive).
+// Aspire default endpoints (/health, /alive) — Development only.
 app.MapDefaultEndpoints();
+
+// Plain liveness probe returning 200 OK, available in all environments.
+// In Development /health is already served by MapDefaultEndpoints, so only
+// map it here to avoid a duplicate-route conflict.
+if (!app.Environment.IsDevelopment())
+{
+    app.MapGet("/health", () => Results.Ok())
+        .WithName("Health")
+        .ExcludeFromDescription();
+}
 
 if (app.Environment.IsDevelopment())
 {
