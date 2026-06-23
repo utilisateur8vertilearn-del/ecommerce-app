@@ -1,0 +1,69 @@
+# CD — Déploiement Continu
+# Ne se déclenche QUE si le workflow CI a réussi sur la branche main.
+# Enchaînement :
+#   1) deploy-preprod : déploiement automatique en pré-production.
+#   2) deploy-prod    : déploiement en production, MAIS derrière le gate
+#      `environment: production` => une approbation humaine est obligatoire.
+#
+# ⚠️ Les commandes de déploiement ci-dessous sont des PLACEHOLDERS : ce dépôt
+# n'a pas encore de cible réelle (pas de Docker, app .NET Aspire). Remplace les
+# steps "Deploy" par tes vraies commandes (Azure, conteneur, etc.) le moment venu.
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]      # doit correspondre au "name:" du workflow CI
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy-preprod:
+    name: Deploy to Pre-Prod
+    runs-on: ubuntu-latest
+    # Ne déploie que si le run CI déclencheur a réussi.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Environnement GitHub "preprod" : aucun gate => déploiement automatique.
+    environment:
+      name: preprod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # PLACEHOLDER : remplace par la vraie commande de déploiement pré-prod.
+      # Les identifiants/URLs doivent venir des secrets, jamais en clair.
+      - name: Deploy (pré-prod)
+        run: |
+          echo "Déploiement en PRÉ-PROD..."
+          echo "TODO: publier l'application vers la cible pré-prod."
+        # env:
+        #   PREPROD_TOKEN: ${{ secrets.PREPROD_TOKEN }}
+
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-preprod          # la prod ne part qu'après la pré-prod
+    # Environnement GitHub "production" : configure des "Required reviewers"
+    # dans Settings > Environments => le job ATTEND une approbation humaine.
+    environment:
+      name: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # PLACEHOLDER : remplace par la vraie commande de déploiement prod.
+      - name: Deploy (production)
+        run: |
+          echo "Déploiement en PRODUCTION (après approbation)..."
+          echo "TODO: publier l'application vers la cible production."
+        # env:
+        #   PROD_TOKEN: ${{ secrets.PROD_TOKEN }}
