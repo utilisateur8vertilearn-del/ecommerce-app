@@ -40,8 +40,8 @@ jobs:
         run: |
           echo "Déploiement en PRÉ-PROD..."
           echo "TODO: publier l'application vers la cible pré-prod."
-        # env:
-        #   PREPROD_TOKEN: ${{ secrets.PREPROD_TOKEN }}
+        env:
+          PREPROD_TOKEN: ${{ secrets.PREPROD_TOKEN }}
 
   deploy-prod:
     name: Deploy to Production
@@ -65,5 +65,5 @@ jobs:
         run: |
           echo "Déploiement en PRODUCTION (après approbation)..."
           echo "TODO: publier l'application vers la cible production."
-        # env:
-        #   PROD_TOKEN: ${{ secrets.PROD_TOKEN }}
+        env:
+          PROD_TOKEN: ${{ secrets.PROD_TOKEN }}
