@@ -1,0 +1,110 @@
+# CI — Intégration Continue
+# Déclenché à chaque push sur main et à chaque pull request ciblant main.
+# Deux jobs :
+#   1) build-test : restaure, compile et (placeholder) teste la solution .NET.
+#   2) security-scan : scanne le dépôt avec Trivy et bloque si faille CRITICAL/HIGH.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Annule un run précédent encore en cours sur la même réf (économie de minutes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      # Récupère le code du dépôt.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Installe le SDK .NET 10 (le projet cible net10.0).
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Restaure les dépendances NuGet de toute la solution.
+      - name: Restore
+        run: dotnet restore ECommerce.slnx
+
+      # Compile en Release sans refaire la restauration.
+      - name: Build
+        run: dotnet build ECommerce.slnx --configuration Release --no-restore
+
+      # Lance les tests. NOTE : aucun projet de test n'existe encore dans la
+      # solution ; cette étape ne fait donc rien pour l'instant et sert de
+      # placeholder. Dès qu'un projet *.Tests sera ajouté, il sera exécuté ici.
+      - name: Test
+        run: dotnet test ECommerce.slnx --configuration Release --no-build --verbosity normal
+
+  security-scan:
+    name: Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Scan en mode "filesystem" (pas d'image Docker : le projet tourne via
+      # .NET Aspire, sans conteneur). Trivy inspecte le code et les dépendances.
+      # exit-code 1 + severity CRITICAL,HIGH => la chaîne ÉCHOUE si une faille
+      # critique ou haute corrigeable est détectée.
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+
+  image-scan:
+    name: Image Build & Scan (Trivy)
+    runs-on: ubuntu-latest
+    # Construit l'image conteneur de chaque service déployable puis la scanne.
+    # fail-fast: false => on voit le résultat de TOUS les services, même si l'un échoue.
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { name: catalog,  project: src/ECommerce.Catalog.Api/ECommerce.Catalog.Api.csproj }
+          - { name: ordering, project: src/ECommerce.Ordering.Api/ECommerce.Ordering.Api.csproj }
+          - { name: gateway,  project: src/ECommerce.Gateway/ECommerce.Gateway.csproj }
+          - { name: web,      project: src/ECommerce.Web/ECommerce.Web.csproj }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Publie une image conteneur sans Dockerfile (support natif du SDK .NET
+      # pour les projets Microsoft.NET.Sdk.Web). L'image est chargée dans le
+      # daemon Docker local du runner sous ecommerce/<service>:ci.
+      - name: Build container image
+        run: >
+          dotnet publish ${{ matrix.service.project }}
+          --configuration Release
+          /t:PublishContainer
+          -p:ContainerRepository=ecommerce/${{ matrix.service.name }}
+          -p:ContainerImageTag=ci
+
+      # Scanne l'image construite (OS + base image aspnet + couches applicatives).
+      # exit-code 1 + CRITICAL,HIGH => échec si faille critique/haute corrigeable.
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ecommerce/${{ matrix.service.name }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
